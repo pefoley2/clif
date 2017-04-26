@@ -16,7 +16,7 @@
 
 # Install CLIF primer script.
 
-set -x -e
+set -e
 
 INSTALL_DIR="$HOME/opt"
 CLIFSRC_DIR="$PWD"
@@ -28,6 +28,7 @@ BUILD_DIR="$LLVM_DIR/build_matcher"
 CV=$(cmake --version | head -1 | cut -f3 -d\ ); CV=(${CV//./ })
 if (( CV[0] < 3 || CV[0] == 3 && CV[1] < 5 )); then
   echo "Install CMake version 3.5+"
+  exit 1
 fi
 
 # Ensure Google protobuf C++ source is installed (needs v3.2+).
@@ -35,6 +36,7 @@ fi
 PV=$(protoc --version | cut -f2 -d\ ); PV=(${PV//./ })
 if (( PV[0] < 3 || PV[0] == 3 && PV[1] < 2 )); then
   echo "Install Google protobuf version 3.2+"
+  exit 1
 fi
 PROTOC_PREFIX_PATH="$(dirname "$(dirname "$(which protoc)")")"
 
@@ -42,7 +44,7 @@ PROTOC_PREFIX_PATH="$(dirname "$(dirname "$(which protoc)")")"
 
 declare -a CMAKE_G_FLAG
 declare -a MAKE_PARALLELISM
-if which ninja; then
+if which ninja > /dev/null; then
   CMAKE_G_FLAGS=(-G Ninja)
   MAKE_OR_NINJA="ninja"
   MAKE_PARALLELISM=()  # Ninja does this on its own.
@@ -91,7 +93,9 @@ cd "$LLVM_DIR"
 svn co https://llvm.org/svn/llvm-project/llvm/trunk@299535 llvm
 cd llvm/tools
 svn co https://llvm.org/svn/llvm-project/cfe/trunk@299535 clang
-ln -s "$CLIFSRC_DIR/clif" clif
+if ! [ -e clif ]; then
+  ln -s "$CLIFSRC_DIR/clif" clif
+fi
 
 # Build and install the CLIF backend.  Our backend is part of the llvm build.
 
@@ -100,6 +104,9 @@ cd "$BUILD_DIR"
 cmake -DCMAKE_INSTALL_PREFIX="$CLIF_VIRTUALENV/clang" \
       -DCMAKE_PREFIX_PATH="$PROTOC_PREFIX_PATH" \
       -DLLVM_INSTALL_TOOLCHAIN_ONLY=true \
+      -DLLVM_MAIN_SRC_DIR="$LLVM_DIR/llvm" \
+      -DLLVM_BINARY_DIR="$BUILD_DIR" \
+      -DGOOGLE_PROTOBUF_INCLUDE_DIRS="/usr/include/google" \
       -DCMAKE_BUILD_TYPE=Release \
       "${CMAKE_G_FLAGS[@]}" "$LLVM_DIR/llvm"
 "$MAKE_OR_NINJA" "${MAKE_PARALLELISM[@]}" clif-matcher
@@ -110,6 +117,6 @@ cmake -DCMAKE_INSTALL_PREFIX="$CLIF_VIRTUALENV/clang" \
 cd "$CLIFSRC_DIR"
 # Grab the python compiled .proto
 cp "$BUILD_DIR/tools/clif/protos/ast_pb2.py" clif/protos/
-"$CLIF_PIP" install .
+"$CLIF_PIP" install --upgrade .
 
 echo "SUCCESS - To use pyclif, run $CLIF_VIRTUALENV/bin/pyclif."
